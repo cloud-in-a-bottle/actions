@@ -1,0 +1,39 @@
+name: Test registry-login
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  push-pull-sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: login
+        uses: ./registry-login
+      - name: Check the image output
+        env:
+          IMAGE: ${{ steps.login.outputs.image }}
+        run: test "$IMAGE" = registry.cloudinabottle.org/actions
+      - uses: docker/setup-buildx-action@v3
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: registry-login/test.Dockerfile
+          push: true
+          tags: ${{ steps.login.outputs.image }}/registry-login-test:${{ github.sha }}
+      - uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign
+        run: cosign sign --yes "${{ steps.login.outputs.image }}/registry-login-test@${{ steps.build.outputs.digest }}"
+      - name: Pull anonymously and verify
+        env:
+          REF: ${{ steps.login.outputs.image }}/registry-login-test@${{ steps.build.outputs.digest }}
+        run: |
+          docker logout registry.cloudinabottle.org
+          docker pull "$REF"
+          cosign verify "$REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/test-registry-login.yml@refs/heads/main"

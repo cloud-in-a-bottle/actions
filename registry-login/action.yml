@@ -1,0 +1,50 @@
+name: Log in to the app image registry
+description: Exchanges the workflow's GitHub OIDC token for a push credential to registry.cloudinabottle.org, and logs docker in with it.
+
+inputs:
+  registry:
+    description: The registry's hostname.
+    default: registry.cloudinabottle.org
+
+outputs:
+  image:
+    description: Where this repo may push, e.g. registry.cloudinabottle.org/forgejo (the repo name, lowercased). Images may also go under it, e.g. <image>/worker.
+    value: ${{ steps.login.outputs.image }}
+
+runs:
+  using: composite
+  steps:
+    - id: login
+      shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+          echo "::error::No OIDC token available: the job needs 'permissions: id-token: write'."
+          exit 1
+        fi
+
+        # The audience is the registry's hostname, which it checks.
+        if ! oidc_response=$(curl -sS --fail-with-body -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$REGISTRY"); then
+          echo "::error::Couldn't get an OIDC token from GitHub: $oidc_response"
+          exit 1
+        fi
+        github_token=$(jq -r .value <<<"$oidc_response")
+        echo "::add-mask::$github_token"
+
+        if ! cred_response=$(curl -sS --fail-with-body -X POST -H "Authorization: Bearer $github_token" \
+            "https://$REGISTRY/exchange-github-oidc-for-push-cred"); then
+          echo "::error::$REGISTRY refused this workflow a push credential: $cred_response"
+          echo "Pushes are allowed only from cloud-in-a-bottle repos, on main, from push, workflow_dispatch, or schedule events, on GitHub-hosted runners."
+          exit 1
+        fi
+        password=$(jq -r .password <<<"$cred_response")
+        echo "::add-mask::$password"
+
+        docker login "$REGISTRY" -u github-actions --password-stdin <<<"$password"
+
+        repo=${GITHUB_REPOSITORY#*/}
+        echo "image=$REGISTRY/${repo,,}" >> "$GITHUB_OUTPUT"
