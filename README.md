@@ -25,16 +25,16 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - id: login
-        uses: cloud-in-a-bottle/actions/registry-login@v1
-      - uses: docker/setup-buildx-action@v3
+        uses: cloud-in-a-bottle/actions/registry-login@d8a8869a427242308e6fd22754961d1e6e095674  # v1
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
         with:
           push: true
           tags: ${{ steps.login.outputs.image }}:${{ github.sha }}
-      - uses: sigstore/cosign-installer@v4.1.2
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532  # v4.1.3
       - name: Sign
         run: cosign sign --yes "${{ steps.login.outputs.image }}@${{ steps.build.outputs.digest }}"
 ```
@@ -43,4 +43,4 @@ jobs:
 
 ## Releasing
 
-Callers use the `v1` tag. After a compatible change merges, move it: `git tag -f v1 && git push -f origin v1`. Changes that would break callers get a `v2`.
+Callers pin a commit, with its tag in a comment (`@<sha>  # v1`), so a moved tag can't change what they run. After a compatible change merges, move `v1` to it (`git tag -f v1 && git push -f origin v1`) and update the pin in the example above; callers pick it up when they bump their pin. Changes that would break callers get a `v2`.
